@@ -5,15 +5,20 @@ const rmrf = require('rimraf')
 const fs = require('fs-extra')
 const Log = require('../src/log')
 const IdentityProvider = require('orbit-db-identity-provider')
-const LogCreator = require('./utils/log-creator')
+const Keystore = require('orbit-db-keystore')
 
 // Test utils
 const {
   config,
   testAPIs,
   startIpfs,
-  stopIpfs
-} = require('./utils')
+  stopIpfs,
+  LogCreator,
+  implementations
+} = require('orbit-db-test-utils')
+
+const properLevelModule = implementations.filter(i => i.key.indexOf('level') > -1).map(i => i.module)[0]
+const storage = require('orbit-db-storage-adapter')(properLevelModule)
 
 let ipfs, testIdentity, testIdentity2, testIdentity3
 
@@ -26,15 +31,23 @@ Object.keys(testAPIs).forEach((IPFS) => {
       repo: config.defaultIpfsConfig.repo + '-log-join' + new Date().getTime()
     })
 
+    let identityStore, signingStore
+
     before(async () => {
       rmrf.sync(ipfsConfig.repo)
       rmrf.sync(identityKeysPath)
       rmrf.sync(signingKeysPath)
       await fs.copy(identityKeyFixtures, identityKeysPath)
       await fs.copy(signingKeyFixtures, signingKeysPath)
-      testIdentity = await IdentityProvider.createIdentity({ id: 'userA', identityKeysPath, signingKeysPath })
-      testIdentity2 = await IdentityProvider.createIdentity({ id: 'userB', identityKeysPath, signingKeysPath })
-      testIdentity3 = await IdentityProvider.createIdentity({ id: 'userC', identityKeysPath, signingKeysPath })
+
+      identityStore = await storage.createStore(identityKeysPath)
+      signingStore = await storage.createStore(signingKeysPath)
+      const keystore = new Keystore(identityStore)
+      const signingKeystore = new Keystore(signingStore)
+
+      testIdentity = await IdentityProvider.createIdentity({ id: 'userA', keystore, signingKeystore })
+      testIdentity2 = await IdentityProvider.createIdentity({ id: 'userB', keystore, signingKeystore })
+      testIdentity3 = await IdentityProvider.createIdentity({ id: 'userC', keystore, signingKeystore })
       ipfs = await startIpfs(IPFS, ipfsConfig)
     })
 
@@ -43,6 +56,9 @@ Object.keys(testAPIs).forEach((IPFS) => {
       rmrf.sync(ipfsConfig.repo)
       rmrf.sync(identityKeysPath)
       rmrf.sync(signingKeysPath)
+
+      await identityStore.close()
+      await signingStore.close()
     })
 
     describe('Basic iterator functionality', () => {
@@ -291,7 +307,7 @@ Object.keys(testAPIs).forEach((IPFS) => {
 
       before(async () => {
         identities = [testIdentity3, testIdentity2, testIdentity3, testIdentity]
-        fixture = await LogCreator.createLogWithSixteenEntries(ipfs, identities)
+        fixture = await LogCreator.createLogWithSixteenEntries(Log, ipfs, identities)
       })
 
       it('returns the full length from all heads', async () => {

@@ -5,6 +5,7 @@ const rmrf = require('rimraf')
 const fs = require('fs-extra')
 const Log = require('../src/log')
 const IdentityProvider = require('orbit-db-identity-provider')
+const Keystore = require('orbit-db-keystore')
 
 // Test utils
 const {
@@ -14,8 +15,12 @@ const {
   stopIpfs,
   getIpfsPeerId,
   waitForPeers,
-  MemStore
-} = require('./utils')
+  MemStore,
+  implementations
+} = require('orbit-db-test-utils')
+
+const properLevelModule = implementations.filter(i => i.key.indexOf('level') > -1).map(i => i.module)[0]
+const storage = require('orbit-db-storage-adapter')(properLevelModule)
 
 Object.keys(testAPIs).forEach((IPFS) => {
   describe('ipfs-log - Replication (' + IPFS + ')', function () {
@@ -30,6 +35,8 @@ Object.keys(testAPIs).forEach((IPFS) => {
     const ipfsConfig2 = Object.assign({}, config.daemon2, {
       repo: config.daemon2.repo + new Date().getTime()
     })
+
+    let identityStore, signingStore
 
     before(async () => {
       rmrf.sync(ipfsConfig1.repo)
@@ -55,9 +62,14 @@ Object.keys(testAPIs).forEach((IPFS) => {
       ipfs2.dag.put = memstore.put.bind(memstore)
       ipfs2.dag.get = memstore.get.bind(memstore)
 
+      identityStore = await storage.createStore(identityKeysPath)
+      signingStore = await storage.createStore(signingKeysPath)
+      const keystore = new Keystore(identityStore)
+      const signingKeystore = new Keystore(signingStore)
+
       // Create an identity for each peers
-      testIdentity = await IdentityProvider.createIdentity({ id: 'userB', identityKeysPath, signingKeysPath })
-      testIdentity2 = await IdentityProvider.createIdentity({ id: 'userA', identityKeysPath, signingKeysPath })
+      testIdentity = await IdentityProvider.createIdentity({ id: 'userB', keystore, signingKeystore })
+      testIdentity2 = await IdentityProvider.createIdentity({ id: 'userA', keystore, signingKeystore })
     })
 
     after(async () => {
@@ -67,6 +79,9 @@ Object.keys(testAPIs).forEach((IPFS) => {
       rmrf.sync(ipfsConfig2.repo)
       rmrf.sync(identityKeysPath)
       rmrf.sync(signingKeysPath)
+
+      await identityStore.close()
+      await signingStore.close()
     })
 
     describe('replicates logs deterministically', function () {
@@ -110,6 +125,10 @@ Object.keys(testAPIs).forEach((IPFS) => {
         log2 = new Log(ipfs2, testIdentity2, { logId })
         input1 = new Log(ipfs1, testIdentity, { logId })
         input2 = new Log(ipfs2, testIdentity2, { logId })
+        const addr1 = await ipfs1.id()
+        const addr2 = await ipfs2.id()
+        await ipfs1.swarm.connect(addr2.addresses[0])
+        await ipfs2.swarm.connect(addr1.addresses[0])
         await ipfs1.pubsub.subscribe(channel, handleMessage)
         await ipfs2.pubsub.subscribe(channel, handleMessage2)
       })

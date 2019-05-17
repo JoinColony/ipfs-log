@@ -6,14 +6,19 @@ const fs = require('fs-extra')
 const Entry = require('../src/entry')
 const Log = require('../src/log')
 const IdentityProvider = require('orbit-db-identity-provider')
+const Keystore = require('orbit-db-keystore')
 
 // Test utils
 const {
   config,
   testAPIs,
   startIpfs,
-  stopIpfs
-} = require('./utils')
+  stopIpfs,
+  implementations
+} = require('orbit-db-test-utils')
+
+const properLevelModule = implementations.filter(i => i.key.indexOf('level') > -1).map(i => i.module)[0]
+const storage = require('orbit-db-storage-adapter')(properLevelModule)
 
 let ipfs, testIdentity, testIdentity2, testIdentity3, testIdentity4
 
@@ -30,16 +35,24 @@ Object.keys(testAPIs).forEach((IPFS) => {
       repo: config.defaultIpfsConfig.repo + '-log-head-and-tails' + new Date().getTime()
     })
 
+    let identityStore, signingStore
+
     before(async () => {
       rmrf.sync(ipfsConfig.repo)
       rmrf.sync(identityKeysPath)
       rmrf.sync(signingKeysPath)
       await fs.copy(identityKeyFixtures, identityKeysPath)
       await fs.copy(signingKeyFixtures, signingKeysPath)
-      testIdentity = await IdentityProvider.createIdentity({ id: 'userA', identityKeysPath, signingKeysPath })
-      testIdentity2 = await IdentityProvider.createIdentity({ id: 'userB', identityKeysPath, signingKeysPath })
-      testIdentity3 = await IdentityProvider.createIdentity({ id: 'userC', identityKeysPath, signingKeysPath })
-      testIdentity4 = await IdentityProvider.createIdentity({ id: 'userD', identityKeysPath, signingKeysPath })
+
+      identityStore = await storage.createStore(identityKeysPath)
+      signingStore = await storage.createStore(signingKeysPath)
+      const keystore = new Keystore(identityStore)
+      const signingKeystore = new Keystore(signingStore)
+
+      testIdentity = await IdentityProvider.createIdentity({ id: 'userA', keystore, signingKeystore })
+      testIdentity2 = await IdentityProvider.createIdentity({ id: 'userB', keystore, signingKeystore })
+      testIdentity3 = await IdentityProvider.createIdentity({ id: 'userC', keystore, signingKeystore })
+      testIdentity4 = await IdentityProvider.createIdentity({ id: 'userD', keystore, signingKeystore })
       ipfs = await startIpfs(IPFS, ipfsConfig)
     })
 
@@ -48,6 +61,9 @@ Object.keys(testAPIs).forEach((IPFS) => {
       rmrf.sync(ipfsConfig.repo)
       rmrf.sync(identityKeysPath)
       rmrf.sync(signingKeysPath)
+
+      await identityStore.close()
+      await signingStore.close()
     })
 
     describe('heads', () => {

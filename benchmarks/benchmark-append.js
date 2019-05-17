@@ -5,6 +5,10 @@ const IPFSRepo = require('ipfs-repo')
 const DatastoreLevel = require('datastore-level')
 const Log = require('../src/log')
 const IdentityProvider = require('orbit-db-identity-provider')
+const Keystore = require('orbit-db-keystore')
+
+const leveldown = require('leveldown')
+const storage = require('orbit-db-storage-adapter')(leveldown)
 
 // State
 let ipfs
@@ -53,7 +57,9 @@ let run = (() => {
     // ipfs.dag.put = memstore.put.bind(memstore)
     // ipfs.dag.get = memstore.get.bind(memstore)
     const signingKeysPath = './test/fixtures/keys'
-    const identity = await IdentityProvider.createIdentity({ id: 'userA', signingKeysPath })
+    const store = await storage.createStore(signingKeysPath)
+    const keystore = new Keystore(store)
+    const identity = await IdentityProvider.createIdentity({ id: 'userA', keystore })
 
     log = new Log(ipfs, identity, { logId: 'A' })
 

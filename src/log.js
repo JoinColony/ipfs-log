@@ -9,7 +9,7 @@ const Clock = require('./lamport-clock')
 const { LastWriteWins, NoZeroes } = require('./log-sorting')
 const AccessController = require('./default-access-controller')
 const { isDefined, findUniques } = require('./utils')
-
+const EntryIndex = require('./entry-index')
 const randomId = () => new Date().getTime().toString()
 const getHash = e => e.hash
 const flatMap = (res, acc) => res.concat(acc)
@@ -83,7 +83,7 @@ class Log extends GSet {
 
     // Add entries to the internal cache
     entries = entries || []
-    this._entryIndex = entries.reduce(uniqueEntriesReducer, {})
+    this._entryIndex = new EntryIndex(entries.reduce(uniqueEntriesReducer, {}))
 
     // Set heads if not passed as an argument
     heads = heads || Log.findHeads(entries)
@@ -169,7 +169,7 @@ class Log extends GSet {
    * @returns {Entry|undefined}
    */
   get (hash) {
-    return this._entryIndex[hash]
+    return this._entryIndex.get(hash)
   }
 
   /**
@@ -178,7 +178,7 @@ class Log extends GSet {
    * @returns {boolean}
    */
   has (entry) {
-    return this._entryIndex[entry.hash || entry] !== undefined
+    return this._entryIndex.get(entry.hash || entry) !== undefined
   }
 
   traverse (rootEntries, amount = -1, endHash) {
@@ -214,21 +214,20 @@ class Log extends GSet {
     // Process stack until it's empty (traversed the full log)
     // or when we have the requested amount of entries
     // If requested entry amount is -1, traverse all
-    while (stack.length > 0 && (amount === -1 || count < amount)) { // eslint-disable-line no-unmodified-loop-condition
+    while (stack.length > 0) { // eslint-disable-line no-unmodified-loop-condition
       // Get the next element from the stack
       const entry = stack.shift()
 
       // Add to the result
-      count++
       result[entry.hash] = entry
+      if ((amount !== -1) && (++count >= amount)) break
+      if (entry.hash === endHash) break
 
       // Add entry's next references to the stack
-      entry.next.map(getEntry)
-        .filter(isDefined)
-        .forEach(addToStack)
-
+      const entries = entry.next.map(getEntry)
+      const defined = entries.filter(isDefined)
+      defined.forEach(addToStack)
       // If it is the specified end hash, break out of the while loop
-      if (entry.hash === endHash) break
     }
 
     return result
@@ -244,7 +243,6 @@ class Log extends GSet {
     const newTime = Math.max(this.clock.time, this.heads.reduce(maxClockTimeReducer, 0)) + 1
     this._clock = new Clock(this.clock.id, newTime)
 
-    // Get the required amount of hashes to next entries (as per current state of the log)
     const references = this.traverse(this.heads, Math.max(pointerCount, this.heads.length))
     const nexts = Object.keys(Object.assign({}, this._headsIndex, references))
 
@@ -264,7 +262,7 @@ class Log extends GSet {
       throw new Error(`Could not append entry, key "${this._identity.id}" is not allowed to write to the log`)
     }
 
-    this._entryIndex[entry.hash] = entry
+    this._entryIndex.set(entry.hash, entry)
     nexts.forEach(e => (this._nextsIndex[e] = entry.hash))
     this._headsIndex = {}
     this._headsIndex[entry.hash] = entry
@@ -383,7 +381,7 @@ class Log extends GSet {
     Object.values(newItems).forEach(addToNextsIndex)
 
     // Update the internal entry index
-    this._entryIndex = Object.assign(this._entryIndex, newItems)
+    this._entryIndex.add(newItems)
 
     // Merge the heads
     const notReferencedByNewItems = e => !nextsFromNewItems.find(a => a === e.hash)
@@ -400,9 +398,10 @@ class Log extends GSet {
     if (size > -1) {
       let tmp = this.values
       tmp = tmp.slice(-size)
-      this._entryIndex = tmp.reduce(uniqueEntriesReducer, {})
+      this._entryIndex = null
+      this._entryIndex = new EntryIndex(tmp.reduce(uniqueEntriesReducer, {}))
       this._headsIndex = Log.findHeads(tmp).reduce(uniqueEntriesReducer, {})
-      this._length = Object.values(this._entryIndex).length
+      this._length = this._entryIndex.length
     }
 
     // Find the latest clock from the heads

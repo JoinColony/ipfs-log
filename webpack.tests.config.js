@@ -22,13 +22,21 @@ module.exports = {
       'process.env': {
         'NODE_ENV': JSON.stringify(process.env.NODE_ENV)
       }
-    })
+    }),
+    new webpack.IgnorePlugin(/mongo|redis/)
   ],
   externals: {
     fs: '{}',
+    fatfs: '{}',
     'fs-extra': '{ copy: () => {} }',
     rimraf: '{ sync: () => {} }',
-    'idb-readable-stream': '{}'
+    'idb-readable-stream': '{}',
+    runtimejs: '{}',
+    net: '{}',
+    'child_process': {},
+    dns: '{}',
+    tls: '{}',
+    bindings: '{}'
   },
   resolve: {
     modules: [

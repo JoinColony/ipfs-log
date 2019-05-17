@@ -9,7 +9,7 @@ const base = {
     return { log, ipfs, repo }
   },
   cycle: async function ({ log }) {
-    await log.append('Hello')
+    await log.append('Hello', 32)
   },
   teardown: async function ({ repo }) {
     await releaseRepo(repo)

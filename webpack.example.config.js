@@ -1,23 +1,36 @@
 'use strict'
 
 const path = require('path')
+const webpack = require('webpack')
 
 module.exports = {
-  entry: './examples/browser/index.js',
+  entry: './examples/entry.js',
   output: {
+    libraryTarget: 'global',
     filename: '../examples/browser/bundle.js'
   },
   target: 'web',
-  devtool: 'none',
+  devtool: 'sourcemap',
   node: {
     console: false,
     process: 'mock',
     Buffer: true
   },
   plugins: [
+    new webpack.IgnorePlugin(/mongo|redis/)
   ],
   externals: {
-    fs: '{}'
+    fs: '{}',
+    fatfs: '{}',
+    'fs-extra': '{ copy: () => {} }',
+    rimraf: '{ sync: () => {} }',
+    'idb-readable-stream': '{}',
+    runtimejs: '{}',
+    net: '{}',
+    'child_process': {},
+    dns: '{}',
+    tls: '{}',
+    bindings: '{}'
   },
   resolve: {
     modules: [
