@@ -6,7 +6,8 @@ const Entry = require('./entry')
 const LogIO = require('./log-io')
 const LogError = require('./log-errors')
 const Clock = require('./lamport-clock')
-const { LastWriteWins, NoZeroes } = require('./log-sorting')
+const Sorting = require('./log-sorting')
+const { LastWriteWins, NoZeroes } = Sorting
 const AccessController = require('./default-access-controller')
 const { isDefined, findUniques } = require('./utils')
 const EntryIndex = require('./entry-index')
@@ -695,4 +696,5 @@ class Log extends GSet {
 }
 
 module.exports = Log
+module.exports.Sorting = Sorting
 module.exports.AccessController = AccessController
